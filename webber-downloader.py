@@ -19,6 +19,10 @@ from pathlib import Path
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 import threading
+import zipfile
+import jsbeautifier
+import cssbeautifier
+from pathlib import Path
 
 class WebCrawler:
     """A class to manage website crawling and media discovery."""
@@ -363,15 +367,16 @@ if __name__ == "__main__":
         print("4. Crawl website for images")
         print("5. Crawl website for vectors")
         print("6. Crawl website for videos")
-        print("7. Exit")
+        print("7. Download website code")
+        print("8. Exit")
         
-        choice = input("\nSelect mode (1-7): ").strip()
+        choice = input("\nSelect mode (1-8): ").strip()
         
-        if choice == "7":
+        if choice == "8":
             break
             
-        if choice not in ["1", "2", "3", "4", "5", "6"]:
-            print("Invalid choice. Please select 1-7.")
+        if choice not in ["1", "2", "3", "4", "5", "6", "7"]:
+            print("Invalid choice. Please select 1-8.")
             continue
             
         website_url = input("Enter the URL of the website: ")
@@ -397,16 +402,17 @@ if __name__ == "__main__":
         file_types_input = input(f"Enter allowed file extensions (e.g., {extensions_map[media_type]}) or press Enter for all: ")
         file_types = [ext.strip().lower() for ext in file_types_input.split(',')] if file_types_input else None
 
-        # Single page downloads
-        if choice in ["1", "2", "3"]:
+        # Handle different modes
+        if choice in ["1", "2", "3"]:  # Single page downloads
             download_from_single_page(
                 website_url,
                 media_type=media_type,
                 max_size_mb=max_size,
                 file_types=file_types
             )
-        # Crawl website
-        else:
+        elif choice == "7":  # Download website code
+            download_website_code(website_url)
+        else:  # Crawl website (choices 4, 5, 6)
             max_depth = input("Enter maximum crawl depth (default 3): ")
             max_depth = int(max_depth) if max_depth.isdigit() else 3
 
@@ -421,3 +427,110 @@ if __name__ == "__main__":
                 max_depth=max_depth,
                 max_pages=max_pages
             )
+
+def download_website_code(url):
+    """Download and organize website source code."""
+    print(f"Downloading source code from: {url}")
+    
+    try:
+        # Get domain name for folder naming
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc.replace("www.", "")
+        site_name = re.sub(r'[<>:"/\\|?*\s]', '_', domain)
+        
+        # Create temporary directory structure
+        temp_dir = Path(f"code/{site_name}")
+        css_dir = temp_dir / "css"
+        js_dir = temp_dir / "js"
+        assets_dir = temp_dir / "assets"
+        (assets_dir / "images").mkdir(parents=True, exist_ok=True)
+        (assets_dir / "fonts").mkdir(parents=True, exist_ok=True)
+        (assets_dir / "other").mkdir(parents=True, exist_ok=True)
+        css_dir.mkdir(parents=True, exist_ok=True)
+        js_dir.mkdir(parents=True, exist_ok=True)
+
+        # Download main page
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Process and save CSS files
+        css_files = set()
+        for link in soup.find_all("link", rel="stylesheet"):
+            css_url = urljoin(url, link.get("href", ""))
+            if css_url:
+                try:
+                    css_response = requests.get(css_url, timeout=10)
+                    css_response.raise_for_status()
+                    css_content = css_response.text
+                    
+                    # Format CSS
+                    css_content = cssbeautifier.beautify(css_content)
+                    
+                    # Save CSS file
+                    css_name = get_safe_filename(css_url, "css")
+                    css_path = css_dir / css_name
+                    css_files.add(css_name)
+                    with open(css_path, 'w', encoding='utf-8') as f:
+                        f.write(css_content)
+                except Exception as e:
+                    print(f"\nError downloading CSS: {css_url} - {str(e)}")
+
+        # Process and save JavaScript files
+        js_files = set()
+        for script in soup.find_all("script", src=True):
+            js_url = urljoin(url, script.get("src", ""))
+            if js_url:
+                try:
+                    js_response = requests.get(js_url, timeout=10)
+                    js_response.raise_for_status()
+                    js_content = js_response.text
+                    
+                    # Format JavaScript
+                    js_content = jsbeautifier.beautify(js_content)
+                    
+                    # Save JavaScript file
+                    js_name = get_safe_filename(js_url, "js")
+                    js_path = js_dir / js_name
+                    js_files.add(js_name)
+                    with open(js_path, 'w', encoding='utf-8') as f:
+                        f.write(js_content)
+                except Exception as e:
+                    print(f"\nError downloading JavaScript: {js_url} - {str(e)}")
+
+        # Update HTML paths
+        for link in soup.find_all("link", rel="stylesheet"):
+            if link.get("href"):
+                css_name = get_safe_filename(urljoin(url, link["href"]), "css")
+                if css_name in css_files:
+                    link["href"] = f"css/{css_name}"
+
+        for script in soup.find_all("script", src=True):
+            if script.get("src"):
+                js_name = get_safe_filename(urljoin(url, script["src"]), "js")
+                if js_name in js_files:
+                    script["src"] = f"js/{js_name}"
+
+        # Save formatted HTML
+        html_content = soup.prettify()
+        with open(temp_dir / "index.html", 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        # Create zip archive
+        zip_name = f"{site_name}-source-code.zip"
+        with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for folder, _, files in os.walk(temp_dir):
+                for file in files:
+                    file_path = os.path.join(folder, file)
+                    arcname = os.path.relpath(file_path, temp_dir)
+                    zipf.write(file_path, arcname)
+
+        # Clean up temporary directory
+        import shutil
+        shutil.rmtree(temp_dir)
+
+        print(f"\nWebsite code downloaded successfully!")
+        print(f"Source code saved as: {zip_name}")
+        
+    except Exception as e:
+        print(f"Error downloading website code: {str(e)}")
