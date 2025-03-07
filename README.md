@@ -69,12 +69,30 @@ A powerful tool to download images, vectors, and videos from websites, with supp
      4. Crawl website for images
      5. Crawl website for vectors
      6. Crawl website for videos
-     7. Exit
+     7. Download website code
+     8. Exit
      ```
    - Type the number (1-7) for what you want to do
    - Press Enter
 
-3. **Example: Downloading Vectors**
+3. **Example: Downloading Website Code**
+   - Choose option 7
+   - Enter the website URL
+   - The code will be downloaded and organized into a zip file with:
+     ```
+     website_name/
+     ├── index.html
+     ├── css/
+     │   └── (formatted CSS files)
+     ├── js/
+     │   └── (formatted JavaScript files)
+     ├── assets/
+     │   ├── images/
+     │   ├── fonts/
+     │   └── other/
+     ```
+
+4. **Example: Downloading Vectors**
    - Choose option 2
    - Paste the website URL (right-click to paste in terminal)
    - Enter maximum file size if needed (default 10MB)
@@ -103,6 +121,8 @@ A powerful tool to download images, vectors, and videos from websites, with supp
 
 ## 🎯 Features
 
+### Media Downloads
+
 - Download media from a single webpage or crawl entire websites
 - Support for multiple file formats:
   - Images: jpg, jpeg, png, gif, webp
@@ -117,6 +137,14 @@ A powerful tool to download images, vectors, and videos from websites, with supp
 - Separate folders for images, vectors, and videos
 - Retry mechanism for failed downloads
 
+### Website Code Download
+- Download complete website source code
+- Automatically organize files in a clean structure
+- Format HTML, CSS, and JavaScript for readability
+- Download external stylesheets and scripts
+- Update file paths to maintain local references
+- Create organized zip archive of website code
+
 ## ⚙️ Configuration
 
 - Default image/vector size limit: 10MB
@@ -130,6 +158,8 @@ A powerful tool to download images, vectors, and videos from websites, with supp
 - beautifulsoup4: HTML parsing
 - requests: HTTP requests
 - tqdm: Progress bars
+- jsbeautifier: JavaScript code formatting
+- cssbeautifier: CSS code formatting
 
 ## 📄 License
 
