@@ -352,47 +352,53 @@ def download_website_code(url):
 
         # Process and save CSS files
         css_files = set()
-        for link in soup.find_all("link", rel="stylesheet"):
-            css_url = urljoin(url, link.get("href", ""))
-            if css_url:
-                try:
-                    css_response = requests.get(css_url, timeout=10)
-                    css_response.raise_for_status()
-                    css_content = css_response.text
-                    
-                    # Format CSS
-                    css_content = cssbeautifier.beautify(css_content)
-                    
-                    # Save CSS file
-                    css_name = get_safe_filename(css_url, "css")
-                    css_path = css_dir / css_name
-                    css_files.add(css_name)
-                    with open(css_path, 'w', encoding='utf-8') as f:
-                        f.write(css_content)
-                except Exception as e:
-                    print(f"\nError downloading CSS: {css_url} - {str(e)}")
+        css_links = soup.find_all("link", rel="stylesheet")
+        with tqdm(total=len(css_links), desc="Downloading CSS files") as pbar:
+            for link in css_links:
+                css_url = urljoin(url, link.get("href", ""))
+                if css_url:
+                    try:
+                        css_response = requests.get(css_url, timeout=10)
+                        css_response.raise_for_status()
+                        css_content = css_response.text
+                        
+                        # Format CSS
+                        css_content = cssbeautifier.beautify(css_content)
+                        
+                        # Save CSS file
+                        css_name = get_safe_filename(css_url, "css")
+                        css_path = css_dir / css_name
+                        css_files.add(css_name)
+                        with open(css_path, 'w', encoding='utf-8') as f:
+                            f.write(css_content)
+                    except Exception as e:
+                        print(f"\nError downloading CSS: {css_url} - {str(e)}")
+                pbar.update(1)
 
         # Process and save JavaScript files
         js_files = set()
-        for script in soup.find_all("script", src=True):
-            js_url = urljoin(url, script.get("src", ""))
-            if js_url:
-                try:
-                    js_response = requests.get(js_url, timeout=10)
-                    js_response.raise_for_status()
-                    js_content = js_response.text
-                    
-                    # Format JavaScript
-                    js_content = jsbeautifier.beautify(js_content)
-                    
-                    # Save JavaScript file
-                    js_name = get_safe_filename(js_url, "js")
-                    js_path = js_dir / js_name
-                    js_files.add(js_name)
-                    with open(js_path, 'w', encoding='utf-8') as f:
-                        f.write(js_content)
-                except Exception as e:
-                    print(f"\nError downloading JavaScript: {js_url} - {str(e)}")
+        js_scripts = soup.find_all("script", src=True)
+        with tqdm(total=len(js_scripts), desc="Downloading JavaScript files") as pbar:
+            for script in js_scripts:
+                js_url = urljoin(url, script.get("src", ""))
+                if js_url:
+                    try:
+                        js_response = requests.get(js_url, timeout=10)
+                        js_response.raise_for_status()
+                        js_content = js_response.text
+                        
+                        # Format JavaScript
+                        js_content = jsbeautifier.beautify(js_content)
+                        
+                        # Save JavaScript file
+                        js_name = get_safe_filename(js_url, "js")
+                        js_path = js_dir / js_name
+                        js_files.add(js_name)
+                        with open(js_path, 'w', encoding='utf-8') as f:
+                            f.write(js_content)
+                    except Exception as e:
+                        print(f"\nError downloading JavaScript: {js_url} - {str(e)}")
+                pbar.update(1)
 
         # Update HTML paths
         for link in soup.find_all("link", rel="stylesheet"):
@@ -418,12 +424,18 @@ def download_website_code(url):
         
         # Create zip archive in code directory
         zip_name = code_dir / f"{site_name}-source-code.zip"
+        # Get list of all files to zip
+        files_to_zip = []
+        for folder, _, files in os.walk(temp_dir):
+            for file in files:
+                file_path = os.path.join(folder, file)
+                files_to_zip.append((file_path, os.path.relpath(file_path, temp_dir)))
+
         with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for folder, _, files in os.walk(temp_dir):
-                for file in files:
-                    file_path = os.path.join(folder, file)
-                    arcname = os.path.relpath(file_path, temp_dir)
+            with tqdm(total=len(files_to_zip), desc="Creating zip archive") as pbar:
+                for file_path, arcname in files_to_zip:
                     zipf.write(file_path, arcname)
+                    pbar.update(1)
 
         # Clean up temporary directory
         import shutil
