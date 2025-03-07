@@ -66,10 +66,9 @@ class WebCrawler:
         return any(parsed.path.lower().endswith(ext) for ext in image_extensions)
 
     def is_valid_vector_url(self, url):
-        """Check if the URL points to a vector file."""
-        vector_extensions = {'.svg', '.ai', '.eps'}
+        """Check if the URL points to an SVG vector file."""
         parsed = urlparse(url)
-        return any(parsed.path.lower().endswith(ext) for ext in vector_extensions)
+        return parsed.path.lower().endswith('.svg')
 
     def is_valid_video_url(self, url):
         """Check if the URL points to a video file."""
@@ -199,12 +198,7 @@ def get_safe_filename(url, media_type='image'):
     
     if not ext:
         if media_type == 'vector':
-            if '.svg' in url.lower():
-                ext = '.svg'
-            elif '.ai' in url.lower():
-                ext = '.ai'
-            else:
-                ext = '.eps'  # Default to eps
+            ext = '.svg'  # Only SVG supported
         elif media_type == 'video':
             if '.mp4' in url.lower():
                 ext = '.mp4'
@@ -418,8 +412,12 @@ def download_website_code(url):
         with open(temp_dir / "index.html", 'w', encoding='utf-8') as f:
             f.write(html_content)
 
-        # Create zip archive
-        zip_name = f"{site_name}-source-code.zip"
+        # Create code directory if it doesn't exist
+        code_dir = Path('code')
+        code_dir.mkdir(exist_ok=True)
+        
+        # Create zip archive in code directory
+        zip_name = code_dir / f"{site_name}-source-code.zip"
         with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for folder, _, files in os.walk(temp_dir):
                 for file in files:
@@ -503,7 +501,7 @@ if __name__ == "__main__":
         # Get file types
         extensions_map = {
             'image': '.jpg,.png,.gif,.webp',
-            'vector': '.svg,.ai,.eps',
+            'vector': '.svg',  # Only SVG supported
             'video': '.mp4,.webm,.mov'
         }
         file_types_input = input(f"Enter allowed file extensions (e.g., {extensions_map[media_type]}) or press Enter for all: ")

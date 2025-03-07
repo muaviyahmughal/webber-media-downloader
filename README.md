@@ -126,7 +126,7 @@ A powerful tool to download images, vectors, and videos from websites, with supp
 - Download media from a single webpage or crawl entire websites
 - Support for multiple file formats:
   - Images: jpg, jpeg, png, gif, webp
-  - Vectors: svg, ai, eps
+  - Vectors: svg
   - Videos: mp4, webm, mov, avi, mkv, m4v
 - Configurable download options:
   - Maximum file size limits
