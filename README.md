@@ -1,6 +1,6 @@
-# Webber - Media Downloader
+# Webber - Website Downloader
 
-A powerful tool to download images, vectors, and videos from websites, with support for both single-page downloads and website crawling.
+A powerful tool to download images, vectors, videos even entire code from websites, with support for both single-page downloads and website crawling.
 
 ## 🚀 Getting Started (Beginner's Guide)
 
