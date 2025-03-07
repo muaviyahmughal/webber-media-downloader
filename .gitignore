@@ -1,7 +1,3 @@
-# Downloaded media
-images/
-videos/
-
 # Python
 __pycache__/
 *.py[cod]
@@ -26,12 +22,24 @@ wheels/
 
 # Virtual Environment
 venv/
-env/
 ENV/
+env/
+.env
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# Project specific
+images/
+vectors/
+videos/
+code/
+*.zip
+gh.msi
+
+# OS specific
 .DS_Store
+Thumbs.db

@@ -330,104 +330,6 @@ def download_from_single_page(url, media_type='image', download_folder=None,
         media_type
     )
 
-def download_with_crawler(url, media_type='image', download_folder=None,
-                        max_size_mb=None, file_types=None, retry_count=3,
-                        max_depth=3, max_pages=100):
-    """Download media files by crawling through website pages."""
-    if download_folder is None:
-        download_folder = media_type + 's'
-    if max_size_mb is None:
-        max_size_mb = 500 if media_type == 'video' else 10
-
-    crawler = WebCrawler(url, max_depth=max_depth, max_pages=max_pages)
-    urls = crawler.crawl(media_type=media_type)
-    
-    if not urls:
-        print(f"No {media_type}s found while crawling.")
-        return
-    
-    download_media_from_urls(
-        urls,
-        download_folder,
-        max_size_mb,
-        file_types,
-        retry_count,
-        media_type
-    )
-
-if __name__ == "__main__":
-    print("\nWebber - Media Downloader")
-    print("Author: Sufyan Mughal (sufyanmughal522@gmail.com)")
-    
-    while True:
-        print("\nSelect Mode:")
-        print("1. Download images from single page")
-        print("2. Download vectors from single page")
-        print("3. Download videos from single page")
-        print("4. Crawl website for images")
-        print("5. Crawl website for vectors")
-        print("6. Crawl website for videos")
-        print("7. Download website code")
-        print("8. Exit")
-        
-        choice = input("\nSelect mode (1-8): ").strip()
-        
-        if choice == "8":
-            break
-            
-        if choice not in ["1", "2", "3", "4", "5", "6", "7"]:
-            print("Invalid choice. Please select 1-8.")
-            continue
-            
-        website_url = input("Enter the URL of the website: ")
-        
-        # Handle different media types
-        media_type = 'image'
-        if choice in ["2", "5"]:
-            media_type = 'vector'
-        elif choice in ["3", "6"]:
-            media_type = 'video'
-            
-        # Get size limit
-        default_size = 500 if media_type == 'video' else 10
-        max_size = input(f"Enter maximum file size in MB (default {default_size}): ")
-        max_size = int(max_size) if max_size.isdigit() else default_size
-
-        # Get file types
-        extensions_map = {
-            'image': '.jpg,.png,.gif,.webp',
-            'vector': '.svg,.ai,.eps',
-            'video': '.mp4,.webm,.mov'
-        }
-        file_types_input = input(f"Enter allowed file extensions (e.g., {extensions_map[media_type]}) or press Enter for all: ")
-        file_types = [ext.strip().lower() for ext in file_types_input.split(',')] if file_types_input else None
-
-        # Handle different modes
-        if choice in ["1", "2", "3"]:  # Single page downloads
-            download_from_single_page(
-                website_url,
-                media_type=media_type,
-                max_size_mb=max_size,
-                file_types=file_types
-            )
-        elif choice == "7":  # Download website code
-            download_website_code(website_url)
-        else:  # Crawl website (choices 4, 5, 6)
-            max_depth = input("Enter maximum crawl depth (default 3): ")
-            max_depth = int(max_depth) if max_depth.isdigit() else 3
-
-            max_pages = input("Enter maximum pages to crawl (default 100): ")
-            max_pages = int(max_pages) if max_pages.isdigit() else 100
-            
-            download_with_crawler(
-                website_url,
-                media_type=media_type,
-                max_size_mb=max_size,
-                file_types=file_types,
-                max_depth=max_depth,
-                max_pages=max_pages
-            )
-
 def download_website_code(url):
     """Download and organize website source code."""
     print(f"Downloading source code from: {url}")
@@ -534,3 +436,101 @@ def download_website_code(url):
         
     except Exception as e:
         print(f"Error downloading website code: {str(e)}")
+
+def download_with_crawler(url, media_type='image', download_folder=None,
+                        max_size_mb=None, file_types=None, retry_count=3,
+                        max_depth=3, max_pages=100):
+    """Download media files by crawling through website pages."""
+    if download_folder is None:
+        download_folder = media_type + 's'
+    if max_size_mb is None:
+        max_size_mb = 500 if media_type == 'video' else 10
+
+    crawler = WebCrawler(url, max_depth=max_depth, max_pages=max_pages)
+    urls = crawler.crawl(media_type=media_type)
+    
+    if not urls:
+        print(f"No {media_type}s found while crawling.")
+        return
+    
+    download_media_from_urls(
+        urls,
+        download_folder,
+        max_size_mb,
+        file_types,
+        retry_count,
+        media_type
+            )
+
+if __name__ == "__main__":
+    print("\nWebber - Media Downloader")
+    print("Author: Sufyan Mughal (sufyanmughal522@gmail.com)")
+    
+    while True:
+        print("\nSelect Mode:")
+        print("1. Download images from single page")
+        print("2. Download vectors from single page")
+        print("3. Download videos from single page")
+        print("4. Crawl website for images")
+        print("5. Crawl website for vectors")
+        print("6. Crawl website for videos")
+        print("7. Download website code")
+        print("8. Exit")
+        
+        choice = input("\nSelect mode (1-8): ").strip()
+        
+        if choice == "8":
+            break
+            
+        if choice not in ["1", "2", "3", "4", "5", "6", "7"]:
+            print("Invalid choice. Please select 1-8.")
+            continue
+            
+        website_url = input("Enter the URL of the website: ")
+        
+        # Handle different media types
+        media_type = 'image'
+        if choice in ["2", "5"]:
+            media_type = 'vector'
+        elif choice in ["3", "6"]:
+            media_type = 'video'
+            
+        # Get size limit
+        default_size = 500 if media_type == 'video' else 10
+        max_size = input(f"Enter maximum file size in MB (default {default_size}): ")
+        max_size = int(max_size) if max_size.isdigit() else default_size
+
+        # Get file types
+        extensions_map = {
+            'image': '.jpg,.png,.gif,.webp',
+            'vector': '.svg,.ai,.eps',
+            'video': '.mp4,.webm,.mov'
+        }
+        file_types_input = input(f"Enter allowed file extensions (e.g., {extensions_map[media_type]}) or press Enter for all: ")
+        file_types = [ext.strip().lower() for ext in file_types_input.split(',')] if file_types_input else None
+
+        # Handle different modes
+        if choice in ["1", "2", "3"]:  # Single page downloads
+            download_from_single_page(
+                website_url,
+                media_type=media_type,
+                max_size_mb=max_size,
+                file_types=file_types
+            )
+        elif choice == "7":  # Download website code
+            download_website_code(website_url)
+        else:  # Crawl website (choices 4, 5, 6)
+            max_depth = input("Enter maximum crawl depth (default 3): ")
+            max_depth = int(max_depth) if max_depth.isdigit() else 3
+
+            max_pages = input("Enter maximum pages to crawl (default 100): ")
+            max_pages = int(max_pages) if max_pages.isdigit() else 100
+            
+            download_with_crawler(
+                website_url,
+                media_type=media_type,
+                max_size_mb=max_size,
+                file_types=file_types,
+                max_depth=max_depth,
+                max_pages=max_pages
+            )
