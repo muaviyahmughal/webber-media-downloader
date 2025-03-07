@@ -57,7 +57,7 @@ A powerful tool to download images, vectors, and videos from websites, with supp
 
 1. **Start the Program**
    ```bash
-   python download_images.py
+   python webber-downloader.py
    ```
 
 2. **Using the Menu**
