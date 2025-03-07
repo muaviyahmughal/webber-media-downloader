@@ -1,6 +1,6 @@
 # Webber - Media Downloader
 
-A user-friendly Python script to download images and videos from websites, with support for both single-page downloads and website crawling.
+A powerful tool to download images, vectors, and videos from websites, with support for both single-page downloads and website crawling.
 
 ## 🚀 Getting Started (Beginner's Guide)
 
@@ -64,19 +64,22 @@ A user-friendly Python script to download images and videos from websites, with 
    - You'll see this menu:
      ```
      1. Download images from single page
-     2. Download videos from single page
-     3. Crawl website for images
-     4. Crawl website for videos
-     5. Exit
+     2. Download vectors from single page
+     3. Download videos from single page
+     4. Crawl website for images
+     5. Crawl website for vectors
+     6. Crawl website for videos
+     7. Exit
      ```
-   - Type the number (1-5) for what you want to do
+   - Type the number (1-7) for what you want to do
    - Press Enter
 
-3. **Example: Downloading Images**
-   - Choose option 1
+3. **Example: Downloading Vectors**
+   - Choose option 2
    - Paste the website URL (right-click to paste in terminal)
-   - Press Enter
-   - Your images will download to the 'images' folder!
+   - Enter maximum file size if needed (default 10MB)
+   - Optionally specify file types (e.g., .svg,.ai,.eps)
+   - Your vectors will download to the 'vectors' folder!
 
 ### Common Issues & Solutions 🔧
 
@@ -96,14 +99,14 @@ A user-friendly Python script to download images and videos from websites, with 
 4. **Download Errors**
    - Check your internet connection
    - Make sure the website allows downloading
-   - Try again with different file types (.jpg, .png, etc.)
+   - Try again with different file types
 
 ## 🎯 Features
 
-- Download images and videos from a single webpage
-- Crawl entire websites to download media
+- Download media from a single webpage or crawl entire websites
 - Support for multiple file formats:
-  - Images: jpg, jpeg, png, gif, webp, svg
+  - Images: jpg, jpeg, png, gif, webp
+  - Vectors: svg, ai, eps
   - Videos: mp4, webm, mov, avi, mkv, m4v
 - Configurable download options:
   - Maximum file size limits
@@ -111,12 +114,12 @@ A user-friendly Python script to download images and videos from websites, with 
   - Crawl depth and page limits
 - Progress tracking with status bars
 - Automatic file naming and organization
-- Separate folders for images and videos
+- Separate folders for images, vectors, and videos
 - Retry mechanism for failed downloads
 
 ## ⚙️ Configuration
 
-- Default image size limit: 10MB
+- Default image/vector size limit: 10MB
 - Default video size limit: 500MB
 - Default crawl depth: 3 levels
 - Default max pages: 100 pages
