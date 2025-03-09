@@ -42,10 +42,11 @@ class WebCrawler:
         """Get appropriate parser based on content type."""
         if 'xml' in content_type.lower():
             try:
-                import lxml
-                return 'xml'
-            except ImportError:
-                return 'html.parser'
+                from bs4 import __version__ as bs4_version
+                if 'lxml' in BeautifulSoup.DEFAULT_BUILDER.PARSERS:
+                    return 'xml'
+            except (ImportError, AttributeError):
+                pass
         return 'html.parser'
     
     def __init__(self, start_url, max_depth=3, max_pages=100):
