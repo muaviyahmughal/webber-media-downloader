@@ -31,6 +31,23 @@ from pathlib import Path
 class WebCrawler:
     """A class to manage website crawling and media discovery."""
     
+    def is_parseable_content(self, response):
+        """Check if the response content is parseable HTML/XML."""
+        content_type = response.headers.get('content-type', '').lower()
+        return ('text/html' in content_type or 
+                'text/xml' in content_type or 
+                'application/xml' in content_type)
+    
+    def get_parser(self, content_type):
+        """Get appropriate parser based on content type."""
+        if 'xml' in content_type.lower():
+            try:
+                import lxml
+                return 'xml'
+            except ImportError:
+                return 'html.parser'
+        return 'html.parser'
+    
     def __init__(self, start_url, max_depth=3, max_pages=100):
         self.start_url = start_url
         self.max_depth = max_depth
@@ -162,9 +179,13 @@ class WebCrawler:
             print(f"\nError normalizing URL {url}: {str(e)}")
             return url  # Return original URL if normalization fails
 
-    def extract_media(self, html, current_url):
-        """Extract all valid links, image URLs, vector URLs, and video URLs from HTML content."""
-        soup = BeautifulSoup(html, 'html.parser')
+    def extract_media(self, html, current_url, parser='html.parser'):
+        """Extract all valid links, image URLs, vector URLs, and video URLs from HTML/XML content."""
+        try:
+            soup = BeautifulSoup(html, parser)
+        except Exception as e:
+            print(f"\nError parsing content: {str(e)}")
+            return set(), set(), set(), set()
         links = set()
         images = set()
         vectors = set()
@@ -239,10 +260,18 @@ class WebCrawler:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             
+            if not self.is_parseable_content(response):
+                return set(), set(), set(), set()
+            
             with self.progress_lock:
                 self.pages_processed += 1
-                
-            return self.extract_media(response.text, url)
+            
+            try:
+                parser = self.get_parser(response.headers.get('content-type', ''))
+                return self.extract_media(response.text, url, parser=parser)
+            except Exception as e:
+                print(f"\nError parsing {url}: {str(e)}")
+                return set(), set(), set(), set()
             
         except requests.exceptions.RequestException as e:
             print(f"\nError crawling {url}: {e}")
