@@ -16,6 +16,8 @@ from tqdm import tqdm
 import re
 import time
 from pathlib import Path
+import fontTools.ttLib as ttLib
+from io import BytesIO
             
 # Import additional dependencies
 from collections import deque
@@ -52,6 +54,8 @@ class WebCrawler:
         # Progress tracking
         self.pages_processed = 0
         self.progress_lock = threading.Lock()
+        self.font_urls = set()
+        self.fonts_lock = threading.Lock()
     
     def is_valid_url(self, url):
         """Validate if the provided URL is well-formed and matches the base domain."""
@@ -77,6 +81,12 @@ class WebCrawler:
         video_extensions = {'.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v'}
         parsed = urlparse(url)
         return any(parsed.path.lower().endswith(ext) for ext in video_extensions)
+        
+    def is_valid_font_url(self, url):
+        """Check if the URL points to a font file."""
+        font_extensions = {'.woff', '.ttf', '.otf'}
+        parsed = urlparse(url)
+        return any(parsed.path.lower().endswith(ext) for ext in font_extensions)
 
     def normalize_url(self, url):
         """Normalize URL by removing fragments and some query parameters."""
@@ -105,7 +115,7 @@ class WebCrawler:
                 links.add(self.normalize_url(url))
 
         # Extract media from various sources
-        for element in soup.find_all(['img', 'source', 'picture', 'object', 'embed']):
+        for element in soup.find_all(['img', 'source', 'picture', 'object', 'embed', 'link']):
             sources = []
             # Check various attributes
             for attr in ['src', 'data-src', 'href']:
@@ -127,6 +137,9 @@ class WebCrawler:
                     vectors.add(normalized_url)
                 elif self.is_valid_video_url(url):
                     videos.add(normalized_url)
+                elif self.is_valid_font_url(url):
+                    with self.fonts_lock:
+                        self.font_urls.add(normalized_url)
 
         # Update media sets with thread safety
         with self.images_lock:
@@ -135,6 +148,22 @@ class WebCrawler:
             self.vector_urls.update(vectors)
         with self.videos_lock:
             self.video_urls.update(videos)
+
+        # Look specifically for font files in stylesheet links
+        for link in soup.find_all('link', rel='stylesheet'):
+            css_url = urljoin(current_url, link.get('href', ''))
+            try:
+                css_response = requests.get(css_url, timeout=10)
+                css_response.raise_for_status()
+                # Find font URLs in CSS content
+                font_matches = re.findall(r'url\(["\']?([^"\'()]+\.(?:woff|ttf|otf))["\']?\)', css_response.text)
+                for font_url in font_matches:
+                    full_url = urljoin(css_url, font_url)
+                    if self.is_valid_font_url(full_url):
+                        with self.fonts_lock:
+                            self.font_urls.add(self.normalize_url(full_url))
+            except requests.exceptions.RequestException:
+                continue
 
         return links, images, vectors, videos
 
@@ -161,7 +190,7 @@ class WebCrawler:
         Crawl the website starting from the initial URL.
         
         Args:
-            media_type (str): Type of media to crawl for ('images', 'vectors', or 'videos')
+            media_type (str): Type of media to crawl for ('images', 'vectors', 'videos', or 'fonts')
         """
         print(f"Starting crawl from {self.start_url}")
         to_visit = deque([(self.start_url, 0)])  # (url, depth)
@@ -188,6 +217,9 @@ class WebCrawler:
         elif media_type == 'videos':
             print(f"\nCrawl complete! Found {len(self.video_urls)} unique videos across {self.pages_processed} pages")
             return list(self.video_urls)
+        elif media_type == 'fonts':
+            print(f"\nCrawl complete! Found {len(self.font_urls)} unique fonts across {self.pages_processed} pages")
+            return list(self.font_urls)
         else:  # images
             print(f"\nCrawl complete! Found {len(self.image_urls)} unique images across {self.pages_processed} pages")
             return list(self.image_urls)
@@ -325,6 +357,138 @@ def download_from_single_page(url, media_type='image', download_folder=None,
         retry_count,
         media_type
     )
+
+def convert_font(font_data, from_format, to_format):
+    """Convert font from one format to another using fontTools."""
+    try:
+        # Read the font
+        font = ttLib.TTFont(BytesIO(font_data), fontNumber=0)
+        
+        # Prepare output buffer
+        output = BytesIO()
+        
+        # Save in new format
+        font.save(output, to_format)
+        
+        return output.getvalue()
+    except Exception as e:
+        print(f"\nError converting font: {str(e)}")
+        return None
+
+def download_fonts(url, download_folder=None, max_size_mb=10, file_types=None, 
+                   retry_count=3, max_depth=1, max_pages=1):
+    """Download and convert fonts from a website."""
+    if download_folder is None:
+        download_folder = 'fonts'
+    
+    print(f"Fetching fonts from: {url}")
+    
+    # Create temporary directories
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc.replace("www.", "")
+    site_name = re.sub(r'[<>:"/\\|?*\s]', '_', domain)
+    
+    temp_dir = Path(f"{download_folder}/temp_{site_name}")
+    woff_dir = temp_dir / "woff"
+    ttf_dir = temp_dir / "ttf"
+    otf_dir = temp_dir / "otf"
+    
+    for directory in [woff_dir, ttf_dir, otf_dir]:
+        directory.mkdir(parents=True, exist_ok=True)
+    
+    # Initialize crawler and get font URLs
+    crawler = WebCrawler(url, max_depth=max_depth, max_pages=max_pages)
+    if max_depth > 1:
+        font_urls = crawler.crawl(media_type='fonts')
+    else:
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            _, _, _, _ = crawler.extract_media(response.text, url)
+            font_urls = list(crawler.font_urls)
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to retrieve webpage: {url}\nError: {e}")
+            return
+
+    if not font_urls:
+        print("No fonts found on the webpage.")
+        return
+    
+    print(f"Found {len(font_urls)} fonts. Starting download...")
+    
+    # Download and convert fonts
+    max_size = max_size_mb * 1024 * 1024
+    successful = 0
+    failed = 0
+    
+    with tqdm(total=len(font_urls), desc="Processing fonts") as pbar:
+        for url in font_urls:
+            try:
+                # Download font
+                response = requests.get(url, stream=True, timeout=10)
+                response.raise_for_status()
+                
+                content_length = response.headers.get('content-length')
+                if content_length and int(content_length) > max_size:
+                    print(f"\nSkipped {url}: File size exceeds {max_size_mb}MB")
+                    continue
+                
+                font_data = response.content
+                original_ext = os.path.splitext(url)[1].lower()
+                
+                # Generate base filename
+                base_name = get_safe_filename(url, 'font')
+                name_without_ext = os.path.splitext(base_name)[0]
+                
+                # Convert and save in all formats
+                format_dirs = {
+                    '.woff': woff_dir,
+                    '.ttf': ttf_dir,
+                    '.otf': otf_dir
+                }
+                
+                # Save original format
+                with open(format_dirs[original_ext] / f"{name_without_ext}{original_ext}", 'wb') as f:
+                    f.write(font_data)
+                
+                # Convert to other formats
+                for target_ext, target_dir in format_dirs.items():
+                    if target_ext != original_ext:
+                        converted = convert_font(font_data, original_ext[1:], target_ext[1:])
+                        if converted:
+                            with open(target_dir / f"{name_without_ext}{target_ext}", 'wb') as f:
+                                f.write(converted)
+                
+                successful += 1
+                
+            except Exception as e:
+                print(f"\nError processing font from {url}: {str(e)}")
+                failed += 1
+            
+            pbar.update(1)
+    
+    # Create zip archive
+    fonts_dir = Path(download_folder)
+    fonts_dir.mkdir(exist_ok=True)
+    zip_name = fonts_dir / f"{site_name}-fonts.zip"
+    
+    print("\nCreating ZIP archive...")
+    with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for folder, _, files in os.walk(temp_dir):
+            for file in files:
+                file_path = os.path.join(folder, file)
+                arcname = os.path.relpath(file_path, temp_dir)
+                zipf.write(file_path, arcname)
+    
+    # Clean up temporary directory
+    import shutil
+    shutil.rmtree(temp_dir)
+    
+    print(f"\nFont processing complete!")
+    print(f"Successfully processed: {successful} fonts")
+    print(f"Failed: {failed}")
+    if successful > 0:
+        print(f"Fonts archive saved as: {zip_name}")
 
 def download_website_code(url):
     """Download and organize website source code."""
@@ -508,29 +672,33 @@ def main():
         print("1. Download images from single page")
         print("2. Download vectors from single page")
         print("3. Download videos from single page")
-        print("4. Crawl website for images")
-        print("5. Crawl website for vectors")
-        print("6. Crawl website for videos")
-        print("7. Download website code")
-        print("8. Exit")
+        print("4. Download fonts from single page")
+        print("5. Crawl website for images")
+        print("6. Crawl website for vectors")
+        print("7. Crawl website for videos")
+        print("8. Crawl website for fonts")
+        print("9. Download website code")
+        print("10. Exit")
         
-        choice = input("\nSelect mode (1-8): ").strip()
+        choice = input("\nSelect mode (1-10): ").strip()
         
-        if choice == "8":
+        if choice == "10":
             break
             
-        if choice not in ["1", "2", "3", "4", "5", "6", "7"]:
-            print("Invalid choice. Please select 1-8.")
+        if choice not in ["1", "2", "3", "4", "5", "6", "7", "8", "9"]:
+            print("Invalid choice. Please select 1-10.")
             continue
             
         website_url = input("Enter the URL of the website: ")
         
         # Handle different media types
         media_type = 'image'
-        if choice in ["2", "5"]:
+        if choice in ["2", "6"]:
             media_type = 'vector'
-        elif choice in ["3", "6"]:
+        elif choice in ["3", "7"]:
             media_type = 'video'
+        elif choice in ["4", "8"]:
+            media_type = 'font'
             
         # Get size limit
         default_size = 500 if media_type == 'video' else 10
@@ -547,30 +715,44 @@ def main():
         file_types = [ext.strip().lower() for ext in file_types_input.split(',')] if file_types_input else None
 
         # Handle different modes
-        if choice in ["1", "2", "3"]:  # Single page downloads
+        if choice in ["1", "2", "3", "4"]:  # Single page downloads
             download_from_single_page(
                 website_url,
                 media_type=media_type,
                 max_size_mb=max_size,
                 file_types=file_types
             )
-        elif choice == "7":  # Download website code (without AI analysis)
-            download_website_code(website_url)  # AI analysis feature removed
-        else:  # Crawl website (choices 4, 5, 6)
+        elif choice == "9":  # Download website code
+            download_website_code(website_url)
+        elif choice == "4":  # Download fonts from single page
+            max_size = input(f"Enter maximum font file size in MB (default 10): ")
+            max_size = int(max_size) if max_size.isdigit() else 10
+            file_types = ['.woff', '.ttf', '.otf']
+            download_fonts(website_url, max_size_mb=max_size, file_types=file_types)
+        else:  # Crawl website (choices 5, 6, 7, 8)
             max_depth = input("Enter maximum crawl depth (default 3): ")
             max_depth = int(max_depth) if max_depth.isdigit() else 3
 
             max_pages = input("Enter maximum pages to crawl (default 100): ")
             max_pages = int(max_pages) if max_pages.isdigit() else 100
             
-            download_with_crawler(
-                website_url,
-                media_type=media_type,
-                max_size_mb=max_size,
-                file_types=file_types,
-                max_depth=max_depth,
-                max_pages=max_pages
-            )
+            if choice == "8":  # Crawl for fonts
+                download_fonts(
+                    website_url,
+                    max_size_mb=max_size,
+                    file_types=file_types,
+                    max_depth=max_depth,
+                    max_pages=max_pages
+                )
+            else:  # Crawl for other media
+                download_with_crawler(
+                    website_url,
+                    media_type=media_type,
+                    max_size_mb=max_size,
+                    file_types=file_types,
+                    max_depth=max_depth,
+                    max_pages=max_pages
+                )
 
 if __name__ == "__main__":
     main()
