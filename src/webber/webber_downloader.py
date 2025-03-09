@@ -137,15 +137,30 @@ class WebCrawler:
 
     def normalize_url(self, url):
         """Normalize URL by removing fragments and some query parameters."""
-        parsed = urlparse(url)
-        if parsed.query:
-            params = dict(pair.split('=') for pair in parsed.query.split('&'))
-            filtered_params = {k: v for k, v in params.items() 
-                            if not any(track in k.lower() 
-                                     for track in ['utm_', 'fbclid', 'ref_'])}
-            if filtered_params:
-                return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{urlencode(filtered_params)}"
-        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        try:
+            parsed = urlparse(url)
+            if parsed.query:
+                # Handle cases where query params don't have values
+                params = {}
+                for param in parsed.query.split('&'):
+                    if not param:  # Skip empty parameters
+                        continue
+                    if '=' in param:
+                        key, value = param.split('=', 1)
+                        # Filter out tracking parameters
+                        if not any(track in key.lower() for track in ['utm_', 'fbclid', 'ref_']):
+                            params[key] = value
+                    else:
+                        # Handle parameters without values
+                        if not any(track in param.lower() for track in ['utm_', 'fbclid', 'ref_']):
+                            params[param] = ''
+                
+                if params:
+                    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{urlencode(params)}"
+            return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        except Exception as e:
+            print(f"\nError normalizing URL {url}: {str(e)}")
+            return url  # Return original URL if normalization fails
 
     def extract_media(self, html, current_url):
         """Extract all valid links, image URLs, vector URLs, and video URLs from HTML content."""
