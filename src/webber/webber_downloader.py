@@ -179,6 +179,34 @@ class WebCrawler:
             print(f"\nError normalizing URL {url}: {str(e)}")
             return url  # Return original URL if normalization fails
 
+    def process_video_element(self, element, current_url):
+        """Process a video-related element and extract video URLs."""
+        sources = []
+        
+        # Direct src attribute
+        if element.get('src'):
+            sources.append(element['src'])
+        
+        # Source child elements
+        for source in element.find_all('source'):
+            if source.get('src'):
+                sources.append(source['src'])
+        
+        # Data attributes for custom video players
+        for attr in ['data-url', 'data-video-url', 'data-src', 'data-video-src']:
+            if element.get(attr):
+                sources.append(element[attr])
+        
+        # Handle iframe video embeds
+        if element.name == 'iframe':
+            src = element.get('src', '')
+            # Common video platforms
+            if any(platform in src.lower() for platform in ['player', 'video', 'embed']):
+                sources.append(src)
+        
+        # Convert relative URLs to absolute
+        return [urljoin(current_url, src) for src in sources]
+
     def extract_media(self, html, current_url, parser='html.parser'):
         """Extract all valid links, image URLs, vector URLs, and video URLs from HTML/XML content."""
         try:
@@ -198,7 +226,7 @@ class WebCrawler:
                 links.add(self.normalize_url(url))
 
         # Extract media from various sources
-        for element in soup.find_all(['img', 'source', 'picture', 'object', 'embed', 'link']):
+        for element in soup.find_all(['img', 'source', 'picture', 'object', 'embed', 'link', 'video', 'iframe']):
             sources = []
             # Check various attributes
             for attr in ['src', 'data-src', 'href']:
@@ -210,7 +238,14 @@ class WebCrawler:
                 bg_matches = re.findall(r'url\(["\']?([^"\'()]+)["\']?\)', element['style'])
                 sources.extend(bg_matches)
 
-            # Process all found sources
+            # Additional video-specific processing
+            if element.name in ['video', 'iframe']:
+                video_sources = self.process_video_element(element, current_url)
+                for src in video_sources:
+                    if self.is_valid_video_url(src):
+                        videos.add(self.normalize_url(src))
+
+            # Process all found sources from standard attributes
             for src in sources:
                 url = urljoin(current_url, src)
                 normalized_url = self.normalize_url(url)
@@ -223,6 +258,13 @@ class WebCrawler:
                 elif self.is_valid_font_url(url):
                     with self.fonts_lock:
                         self.font_urls.add(normalized_url)
+
+            # Check for video-specific data attributes
+            if element.name == 'div' and any(attr in element.attrs for attr in ['data-video-url', 'data-video-src']):
+                video_sources = self.process_video_element(element, current_url)
+                for src in video_sources:
+                    if self.is_valid_video_url(src):
+                        videos.add(self.normalize_url(src))
 
         # Update media sets with thread safety
         with self.images_lock:
