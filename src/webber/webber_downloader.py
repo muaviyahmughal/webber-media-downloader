@@ -4,7 +4,7 @@ Webber - Media Downloader
 A powerful tool to download images, vectors, and videos from websites.
 
 Author: Sufyan Mughal (sufyanmughal522@gmail.com)
-Version: 2.0
+Version: 2.1.1
 License: MIT
 """
 
@@ -16,6 +16,8 @@ from tqdm import tqdm
 import re
 import time
 from pathlib import Path
+            
+# Import additional dependencies
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 import threading
@@ -329,123 +331,148 @@ def download_website_code(url):
     print(f"Downloading source code from: {url}")
     
     try:
-        # Get domain name for folder naming
-        parsed_url = urlparse(url)
-        domain = parsed_url.netloc.replace("www.", "")
-        site_name = re.sub(r'[<>:"/\\|?*\s]', '_', domain)
-        
-        # Create temporary directory structure
-        temp_dir = Path(f"code/{site_name}")
-        css_dir = temp_dir / "css"
-        js_dir = temp_dir / "js"
-        assets_dir = temp_dir / "assets"
-        (assets_dir / "images").mkdir(parents=True, exist_ok=True)
-        (assets_dir / "fonts").mkdir(parents=True, exist_ok=True)
-        (assets_dir / "other").mkdir(parents=True, exist_ok=True)
-        css_dir.mkdir(parents=True, exist_ok=True)
-        js_dir.mkdir(parents=True, exist_ok=True)
+        with tqdm(total=5, desc="Website Code Processing") as main_pbar:
+            # Get domain name for folder naming
+            parsed_url = urlparse(url)
+            domain = parsed_url.netloc.replace("www.", "")
+            site_name = re.sub(r'[<>:"/\\|?*\s]', '_', domain)
+            
+            # Create temporary directory structure
+            main_pbar.set_description("Setting up directory structure")
+            temp_dir = Path(f"code/{site_name}")
+            css_dir = temp_dir / "css"
+            js_dir = temp_dir / "js"
+            assets_dir = temp_dir / "assets"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            css_dir.mkdir(parents=True, exist_ok=True)
+            js_dir.mkdir(parents=True, exist_ok=True)
+            (assets_dir / "images").mkdir(parents=True, exist_ok=True)
+            (assets_dir / "fonts").mkdir(parents=True, exist_ok=True)
+            (assets_dir / "other").mkdir(parents=True, exist_ok=True)
+            main_pbar.update(1)
 
-        # Download main page
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
+            # Download main page
+            main_pbar.set_description("Downloading main page")
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            main_pbar.update(1)
 
-        # Process and save CSS files
-        css_files = set()
-        css_links = soup.find_all("link", rel="stylesheet")
-        with tqdm(total=len(css_links), desc="Downloading CSS files") as pbar:
-            for link in css_links:
-                css_url = urljoin(url, link.get("href", ""))
-                if css_url:
-                    try:
-                        css_response = requests.get(css_url, timeout=10)
-                        css_response.raise_for_status()
-                        css_content = css_response.text
-                        
-                        # Format CSS
-                        css_content = cssbeautifier.beautify(css_content)
-                        
-                        # Save CSS file
-                        css_name = get_safe_filename(css_url, "css")
-                        css_path = css_dir / css_name
-                        css_files.add(css_name)
-                        with open(css_path, 'w', encoding='utf-8') as f:
-                            f.write(css_content)
-                    except Exception as e:
-                        print(f"\nError downloading CSS: {css_url} - {str(e)}")
-                pbar.update(1)
+            # Initialize code files collection
+            html_content = soup.prettify()
+            code_files = {
+                'html': html_content,
+                'css': {},
+                'js': {}
+            }
 
-        # Process and save JavaScript files
-        js_files = set()
-        js_scripts = soup.find_all("script", src=True)
-        with tqdm(total=len(js_scripts), desc="Downloading JavaScript files") as pbar:
-            for script in js_scripts:
-                js_url = urljoin(url, script.get("src", ""))
-                if js_url:
-                    try:
-                        js_response = requests.get(js_url, timeout=10)
-                        js_response.raise_for_status()
-                        js_content = js_response.text
-                        
-                        # Format JavaScript
-                        js_content = jsbeautifier.beautify(js_content)
-                        
-                        # Save JavaScript file
-                        js_name = get_safe_filename(js_url, "js")
-                        js_path = js_dir / js_name
-                        js_files.add(js_name)
-                        with open(js_path, 'w', encoding='utf-8') as f:
-                            f.write(js_content)
-                    except Exception as e:
-                        print(f"\nError downloading JavaScript: {js_url} - {str(e)}")
-                pbar.update(1)
-
-        # Update HTML paths
-        for link in soup.find_all("link", rel="stylesheet"):
-            if link.get("href"):
-                css_name = get_safe_filename(urljoin(url, link["href"]), "css")
-                if css_name in css_files:
-                    link["href"] = f"css/{css_name}"
-
-        for script in soup.find_all("script", src=True):
-            if script.get("src"):
-                js_name = get_safe_filename(urljoin(url, script["src"]), "js")
-                if js_name in js_files:
-                    script["src"] = f"js/{js_name}"
-
-        # Save formatted HTML
-        html_content = soup.prettify()
-        with open(temp_dir / "index.html", 'w', encoding='utf-8') as f:
-            f.write(html_content)
-
-        # Create code directory if it doesn't exist
-        code_dir = Path('code')
-        code_dir.mkdir(exist_ok=True)
-        
-        # Create zip archive in code directory
-        zip_name = code_dir / f"{site_name}-source-code.zip"
-        # Get list of all files to zip
-        files_to_zip = []
-        for folder, _, files in os.walk(temp_dir):
-            for file in files:
-                file_path = os.path.join(folder, file)
-                files_to_zip.append((file_path, os.path.relpath(file_path, temp_dir)))
-
-        with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            with tqdm(total=len(files_to_zip), desc="Creating zip archive") as pbar:
-                for file_path, arcname in files_to_zip:
-                    zipf.write(file_path, arcname)
+            # Process CSS files
+            main_pbar.set_description("Processing CSS files")
+            css_files = set()
+            css_links = soup.find_all("link", rel="stylesheet")
+            with tqdm(total=len(css_links), desc="Downloading CSS files") as pbar:
+                for link in css_links:
+                    css_url = urljoin(url, link.get("href", ""))
+                    if css_url:
+                        try:
+                            css_response = requests.get(css_url, timeout=10)
+                            css_response.raise_for_status()
+                            css_content = cssbeautifier.beautify(css_response.text)
+                            css_name = get_safe_filename(css_url, "css")
+                            css_files.add(css_name)
+                            code_files['css'][css_name] = css_content
+                        except Exception as e:
+                            print(f"\nError downloading CSS: {css_url} - {str(e)}")
                     pbar.update(1)
+            main_pbar.update(1)
 
-        # Clean up temporary directory
-        import shutil
-        shutil.rmtree(temp_dir)
+            # Process JavaScript files
+            main_pbar.set_description("Processing JavaScript files")
+            js_files = set()
+            js_scripts = soup.find_all("script", src=True)
+            with tqdm(total=len(js_scripts), desc="Downloading JavaScript files") as pbar:
+                for script in js_scripts:
+                    js_url = urljoin(url, script.get("src", ""))
+                    if js_url:
+                        try:
+                            js_response = requests.get(js_url, timeout=10)
+                            js_response.raise_for_status()
+                            js_content = jsbeautifier.beautify(js_response.text)
+                            js_name = get_safe_filename(js_url, "js")
+                            js_files.add(js_name)
+                            code_files['js'][js_name] = js_content
+                        except Exception as e:
+                            print(f"\nError downloading JavaScript: {js_url} - {str(e)}")
+                    pbar.update(1)
+            main_pbar.update(1)
 
-        print(f"\nWebsite code downloaded successfully!")
-        print(f"Source code saved as: {zip_name}")
-        
+            # Save files
+            main_pbar.set_description("Saving processed files")
+            
+            # Save HTML
+            with open(temp_dir / "index.html", 'w', encoding='utf-8') as f:
+                f.write(html_content)
+
+            # Save CSS files
+            for css_name, css_content in code_files['css'].items():
+                css_path = css_dir / css_name
+                with open(css_path, 'w', encoding='utf-8') as f:
+                    f.write(css_content)
+
+            # Save JavaScript files
+            for js_name, js_content in code_files['js'].items():
+                js_path = js_dir / js_name
+                with open(js_path, 'w', encoding='utf-8') as f:
+                    f.write(js_content)
+
+            # Update HTML paths
+            soup = BeautifulSoup(html_content, 'html.parser')
+            for link in soup.find_all("link", rel="stylesheet"):
+                if link.get("href"):
+                    css_name = get_safe_filename(urljoin(url, link["href"]), "css")
+                    if css_name in css_files:
+                        link["href"] = f"css/{css_name}"
+
+            for script in soup.find_all("script", src=True):
+                if script.get("src"):
+                    js_name = get_safe_filename(urljoin(url, script["src"]), "js")
+                    if js_name in js_files:
+                        script["src"] = f"js/{js_name}"
+
+            # Save updated HTML with fixed paths
+            with open(temp_dir / "index.html", 'w', encoding='utf-8') as f:
+                f.write(soup.prettify())
+            main_pbar.update(1)
+
+            # Create zip archive
+            main_pbar.set_description("Creating zip archive")
+            code_dir = Path('code')
+            code_dir.mkdir(exist_ok=True)
+            zip_name = code_dir / f"{site_name}-source-code.zip"
+            # Get list of all files to zip
+            files_to_zip = []
+            for folder, _, files in os.walk(temp_dir):
+                for file in files:
+                    file_path = os.path.join(folder, file)
+                    files_to_zip.append((file_path, os.path.relpath(file_path, temp_dir)))
+
+            # Create zip archive
+            with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                with tqdm(total=len(files_to_zip), desc="Adding files to archive") as pbar:
+                    for file_path, arcname in files_to_zip:
+                        zipf.write(file_path, arcname)
+                        pbar.update(1)
+
+            # Clean up temporary directory
+            main_pbar.set_description("Cleaning up")
+            import shutil
+            shutil.rmtree(temp_dir)
+            
+            print(f"\nWebsite code downloaded successfully!")
+            print(f"Source code saved as: {zip_name}")
+
     except Exception as e:
-        print(f"Error downloading website code: {str(e)}")
+        print(f"\nError downloading website code: {str(e)}")
 
 def download_with_crawler(url, media_type='image', download_folder=None,
                         max_size_mb=None, file_types=None, retry_count=3,
@@ -472,7 +499,7 @@ def download_with_crawler(url, media_type='image', download_folder=None,
         media_type
             )
 
-if __name__ == "__main__":
+def main():
     print("\nWebber - Media Downloader")
     print("Author: Sufyan Mughal (sufyanmughal522@gmail.com)")
     
@@ -527,8 +554,8 @@ if __name__ == "__main__":
                 max_size_mb=max_size,
                 file_types=file_types
             )
-        elif choice == "7":  # Download website code
-            download_website_code(website_url)
+        elif choice == "7":  # Download website code (without AI analysis)
+            download_website_code(website_url)  # AI analysis feature removed
         else:  # Crawl website (choices 4, 5, 6)
             max_depth = input("Enter maximum crawl depth (default 3): ")
             max_depth = int(max_depth) if max_depth.isdigit() else 3
@@ -544,3 +571,6 @@ if __name__ == "__main__":
                 max_depth=max_depth,
                 max_pages=max_pages
             )
+
+if __name__ == "__main__":
+    main()
