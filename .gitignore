@@ -36,6 +36,7 @@ env/
 images/
 vectors/
 videos/
+fonts/
 code/
 *.zip
 gh.msi
