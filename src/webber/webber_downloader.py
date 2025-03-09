@@ -84,9 +84,56 @@ class WebCrawler:
         
     def is_valid_font_url(self, url):
         """Check if the URL points to a font file."""
-        font_extensions = {'.woff', '.ttf', '.otf'}
+        font_extensions = {'.woff', '.woff2', '.ttf', '.otf'}
         parsed = urlparse(url)
         return any(parsed.path.lower().endswith(ext) for ext in font_extensions)
+
+    def process_stylesheet(self, css_url, css_content=None, visited_stylesheets=None):
+        """Process a stylesheet and extract font URLs."""
+        if visited_stylesheets is None:
+            visited_stylesheets = set()
+        
+        if css_url in visited_stylesheets:
+            return
+        
+        visited_stylesheets.add(css_url)
+        
+        try:
+            # Get CSS content if not provided
+            if css_content is None:
+                response = requests.get(css_url, timeout=10)
+                response.raise_for_status()
+                css_content = response.text
+            
+            # Font patterns to match
+            font_patterns = [
+                # @font-face src URLs
+                r'@font-face[^}]*?src:[^;}]*?url\(["\']?([^"\'()]+\.(?:woff2?|ttf|otf))["\']?\)',
+                # Generic URL pattern for font files
+                r'url\(["\']?([^"\'()]+\.(?:woff2?|ttf|otf))["\']?\)',
+                # Font file direct links
+                r'href=["\']([^"\']+\.(?:woff2?|ttf|otf))["\']'
+            ]
+            
+            # Extract fonts using patterns
+            for pattern in font_patterns:
+                matches = re.finditer(pattern, css_content, re.IGNORECASE)
+                for match in matches:
+                    font_url = match.group(1)
+                    full_url = urljoin(css_url, font_url)
+                    if self.is_valid_font_url(full_url):
+                        with self.fonts_lock:
+                            self.font_urls.add(self.normalize_url(full_url))
+            
+            # Look for @import rules and process them
+            import_pattern = r'@import\s+(?:url\(["\']?([^"\'()]+)["\']?\)|["\']([^"\']+)["\'])'
+            for match in re.finditer(import_pattern, css_content):
+                import_url = match.group(1) or match.group(2)
+                full_import_url = urljoin(css_url, import_url)
+                self.process_stylesheet(full_import_url, visited_stylesheets=visited_stylesheets)
+                
+        except requests.exceptions.RequestException:
+            pass
 
     def normalize_url(self, url):
         """Normalize URL by removing fragments and some query parameters."""
@@ -149,21 +196,22 @@ class WebCrawler:
         with self.videos_lock:
             self.video_urls.update(videos)
 
-        # Look specifically for font files in stylesheet links
-        for link in soup.find_all('link', rel='stylesheet'):
-            css_url = urljoin(current_url, link.get('href', ''))
-            try:
-                css_response = requests.get(css_url, timeout=10)
-                css_response.raise_for_status()
-                # Find font URLs in CSS content
-                font_matches = re.findall(r'url\(["\']?([^"\'()]+\.(?:woff|ttf|otf))["\']?\)', css_response.text)
-                for font_url in font_matches:
-                    full_url = urljoin(css_url, font_url)
-                    if self.is_valid_font_url(full_url):
-                        with self.fonts_lock:
-                            self.font_urls.add(self.normalize_url(full_url))
-            except requests.exceptions.RequestException:
-                continue
+        # Process stylesheets
+        for link in soup.find_all('link', rel=['stylesheet', 'preload']):
+            if link.get('as') == 'font' or link.get('rel') == ['stylesheet']:
+                css_url = urljoin(current_url, link.get('href', ''))
+                self.process_stylesheet(css_url)
+
+        # Process inline styles
+        for style in soup.find_all('style'):
+            self.process_stylesheet(current_url, css_content=style.string)
+
+        # Check for font preload links
+        for link in soup.find_all('link', rel='preload', as_='font'):
+            font_url = urljoin(current_url, link.get('href', ''))
+            if self.is_valid_font_url(font_url):
+                with self.fonts_lock:
+                    self.font_urls.add(self.normalize_url(font_url))
 
         return links, images, vectors, videos
 
