@@ -709,7 +709,8 @@ def main():
         extensions_map = {
             'image': '.jpg,.png,.gif,.webp',
             'vector': '.svg',  # Only SVG supported
-            'video': '.mp4,.webm,.mov'
+            'video': '.mp4,.webm,.mov',
+            'font': '.woff,.ttf,.otf'
         }
         file_types_input = input(f"Enter allowed file extensions (e.g., {extensions_map[media_type]}) or press Enter for all: ")
         file_types = [ext.strip().lower() for ext in file_types_input.split(',')] if file_types_input else None
@@ -727,7 +728,7 @@ def main():
         elif choice == "4":  # Download fonts from single page
             max_size = input(f"Enter maximum font file size in MB (default 10): ")
             max_size = int(max_size) if max_size.isdigit() else 10
-            file_types = ['.woff', '.ttf', '.otf']
+            file_types = [ext.strip() for ext in extensions_map['font'].split(',')]
             download_fonts(website_url, max_size_mb=max_size, file_types=file_types)
         else:  # Crawl website (choices 5, 6, 7, 8)
             max_depth = input("Enter maximum crawl depth (default 3): ")
