@@ -361,18 +361,42 @@ def download_from_single_page(url, media_type='image', download_folder=None,
 def convert_font(font_data, from_format, to_format):
     """Convert font from one format to another using fontTools."""
     try:
-        # Read the font
-        font = ttLib.TTFont(BytesIO(font_data), fontNumber=0)
+        # Remove leading dots and normalize format names
+        from_format = from_format.lstrip('.').lower()
+        to_format = to_format.lstrip('.').lower()
+        
+        # Setup flavor for source format
+        flavor = from_format if from_format in ('woff', 'woff2') else None
+        
+        # Read and validate the font
+        font = ttLib.TTFont(BytesIO(font_data), flavor=flavor)
+        try:
+            font.validate()
+        except ttLib.TTLibError as e:
+            print(f"\nInvalid font file: {str(e)}")
+            return None
         
         # Prepare output buffer
         output = BytesIO()
         
-        # Save in new format
-        font.save(output, to_format)
+        # Set proper flavor for target format
+        font.flavor = to_format if to_format in ('woff', 'woff2') else None
         
-        return output.getvalue()
+        # Save in new format
+        try:
+            font.save(output, to_format)
+            # Verify the converted font is valid
+            output.seek(0)
+            test_font = ttLib.TTFont(output, flavor=font.flavor)
+            test_font.validate()
+            output.seek(0)
+            return output.getvalue()
+        except Exception as e:
+            print(f"\nError saving converted font: {str(e)}")
+            return None
+            
     except Exception as e:
-        print(f"\nError converting font: {str(e)}")
+        print(f"\nError during font conversion: {str(e)}")
         return None
 
 def download_fonts(url, download_folder=None, max_size_mb=10, file_types=None, 
@@ -447,17 +471,37 @@ def download_fonts(url, download_folder=None, max_size_mb=10, file_types=None,
                     '.otf': otf_dir
                 }
                 
+                # First validate the downloaded font
+                try:
+                    test_font = ttLib.TTFont(BytesIO(font_data))
+                    test_font.validate()
+                except Exception as e:
+                    print(f"\nSkipping invalid font from {url}: {str(e)}")
+                    failed += 1
+                    pbar.update(1)
+                    continue
+                
                 # Save original format
                 with open(format_dirs[original_ext] / f"{name_without_ext}{original_ext}", 'wb') as f:
                     f.write(font_data)
                 
                 # Convert to other formats
+                conversion_failures = 0
                 for target_ext, target_dir in format_dirs.items():
                     if target_ext != original_ext:
                         converted = convert_font(font_data, original_ext[1:], target_ext[1:])
                         if converted:
                             with open(target_dir / f"{name_without_ext}{target_ext}", 'wb') as f:
                                 f.write(converted)
+                        else:
+                            conversion_failures += 1
+                            print(f"\nFailed to convert {name_without_ext} to {target_ext}")
+                
+                if conversion_failures == len(format_dirs) - 1:
+                    # If all conversions failed, count this as a failed font
+                    failed += 1
+                else:
+                    successful += 1
                 
                 successful += 1
                 
